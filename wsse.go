@@ -252,6 +252,7 @@ func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
 	}
 
 	encodedSignatureValue := base64.StdEncoding.EncodeToString(signatureValue)
+	encodedCertificateValue := base64.StdEncoding.EncodeToString(w.certDER.Certificate[0])
 
 	secHeader := security{
 		XMLNS: wsseNS,
@@ -260,8 +261,7 @@ func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
 			WsuID:        ids.securityTokenID,
 			EncodingType: encTypeBinary,
 			ValueType:    valTypeX509Token,
-			//Value:        w.certDER,
-			Value: string(w.certDER.Certificate[0]),
+			Value:        encodedCertificateValue,
 		},
 		Signature: signature{
 			XMLNS:          dsigNS,
