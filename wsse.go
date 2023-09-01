@@ -5,14 +5,10 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
-	"crypto/x509"
+	"crypto/tls"
 	"encoding/base64"
-	"encoding/pem"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
-	"regexp"
-	"strings"
 	"time"
 )
 
@@ -34,8 +30,8 @@ const (
 
 // WSSEAuthInfo contains the information required to use WS-Security X.509 signing.
 type WSSEAuthInfo struct {
-	certDER string
-	key     *rsa.PrivateKey
+	certDER tls.Certificate
+	key     crypto.PrivateKey
 }
 
 // WSSEAuthIDs contains generated IDs used in WS-Security X.509 signing.
@@ -46,43 +42,15 @@ type WSSEAuthIDs struct {
 
 // NewWSSEAuthInfo retrieves the supplied certificate path and key path for signing SOAP requests.
 // These requests will be secured using the WS-Security X.509 security standard.
-// If the supplied certificate path does not point to a DER-encoded X.509 certificate, or
-// if the supplied key path does not point to a PEM-encoded X.509 certificate, an error will be returned.
 func NewWSSEAuthInfo(certPath string, keyPath string) (*WSSEAuthInfo, error) {
-	certFileContents, err := ioutil.ReadFile(certPath)
-	if err != nil {
-		return nil, err
-	}
-
-	certDer := string(certFileContents)
-
-	// Super ugly way of getting the contents, but this works
-	newlineRegex := regexp.MustCompile(`\r?\n`)
-	certDer = newlineRegex.ReplaceAllString(certDer, "")
-	certDer = strings.TrimPrefix(certDer, "-----BEGIN CERTIFICATE-----")
-	certDer = strings.TrimSuffix(certDer, "-----END CERTIFICATE-----")
-
-	keyFileContents, err := ioutil.ReadFile(keyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	keyPemBlock, _ := pem.Decode(keyFileContents)
-
-	if keyPemBlock == nil || keyPemBlock.Type != "RSA PRIVATE KEY" {
-		return nil, ErrInvalidPEMFileSpecified
-	} else if x509.IsEncryptedPEMBlock(keyPemBlock) {
-		return nil, ErrEncryptedPEMFileSpecified
-	}
-
-	key, err := x509.ParsePKCS1PrivateKey(keyPemBlock.Bytes)
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		return nil, err
 	}
 
 	return &WSSEAuthInfo{
-		certDER: certDer,
-		key:     key,
+		certDER: cert,
+		key:     cert.PrivateKey,
 	}, nil
 }
 
@@ -276,7 +244,9 @@ func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
 	signedInfoHasher.Write(signedInfoEnc)
 	signedInfoDigest := signedInfoHasher.Sum(nil)
 
-	signatureValue, err := rsa.SignPKCS1v15(rand.Reader, w.key, crypto.SHA1, signedInfoDigest)
+	privateKey := w.key.(*rsa.PrivateKey)
+
+	signatureValue, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA1, signedInfoDigest)
 	if err != nil {
 		return security{}, err
 	}
@@ -290,7 +260,8 @@ func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
 			WsuID:        ids.securityTokenID,
 			EncodingType: encTypeBinary,
 			ValueType:    valTypeX509Token,
-			Value:        w.certDER,
+			//Value:        w.certDER,
+			Value: string(w.certDER.Certificate[0]),
 		},
 		Signature: signature{
 			XMLNS:          dsigNS,
