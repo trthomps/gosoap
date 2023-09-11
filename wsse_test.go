@@ -1,6 +1,7 @@
 package soap
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,7 +25,7 @@ var newWsseAuthInfoTests = []newWsseAuthInfoTest{
 		name:       "invalid key file case",
 		inCertPath: "./testdata/cert.pem",
 		inKeyPath:  "./testdata/badkey.pem",
-		err:        ErrInvalidPEMFileSpecified,
+		err:        errors.New("tls: private key does not match public key"),
 	},
 }
 

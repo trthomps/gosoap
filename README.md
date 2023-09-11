@@ -7,7 +7,7 @@ A basic example usage would be as follows:
 ```
 include (
     "context"
-    "github.com/Enflick/gosoap"
+    "github.com/m29h/gosoap"
 )
 
 main() {

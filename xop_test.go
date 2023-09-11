@@ -154,8 +154,8 @@ func TestGetNameFromTag(t *testing.T) {
 	}{
 		{
 			testName: "omitted field tag",
-			tag: "-",
-			xmlName: "-",
+			tag:      "-",
+			xmlName:  "-",
 		},
 		{
 			testName: "tag with everything",

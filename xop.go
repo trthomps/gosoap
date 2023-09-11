@@ -16,7 +16,7 @@ import (
 // This is used for any MIME multi-part SOAP responses we receive.
 
 const (
-	xopNS = "http://www.w3.org/2004/08/xop/include"
+	xopNS   = "http://www.w3.org/2004/08/xop/include"
 	xmlName = "XMLName"
 )
 
@@ -68,7 +68,7 @@ func (d *xopDecoder) getXopContentIDIncludePath(element *etree.Element, path []s
 				cleanedHref := strings.Replace(href, "cid:", "", 1)
 				// This is a super ugly hack reflecting how these URIs are stored in the HTTP header
 				// This is an ugly way to make sure we copy the value of path without subsequent modifications
-				d.includes["<" + cleanedHref + ">"] = append([]string(nil), path...)
+				d.includes["<"+cleanedHref+">"] = append([]string(nil), path...)
 				break
 			}
 
@@ -199,7 +199,7 @@ func getNameFromTag(tag string) string {
 
 	// remove xml namespace from the front of the tag
 	parts := strings.Split(tag, " ")
-	tag = parts[len(parts) - 1]
+	tag = parts[len(parts)-1]
 
 	// return the XMLName from the front of the remaining tag
 	return strings.Split(tag, ",")[0]
