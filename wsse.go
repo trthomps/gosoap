@@ -8,8 +8,12 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/xml"
-	"fmt"
+	"errors"
+	"reflect"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Implements the WS-Security standard using X.509 certificate signatures.
@@ -32,17 +36,13 @@ const (
 type WSSEAuthInfo struct {
 	certDER tls.Certificate
 	key     crypto.PrivateKey
-}
-
-// WSSEAuthIDs contains generated IDs used in WS-Security X.509 signing.
-type WSSEAuthIDs struct {
-	securityTokenID string
-	bodyID          string
+	sigRef  []signatureReference
 }
 
 // NewWSSEAuthInfo retrieves the supplied certificate path and key path for signing SOAP requests.
 // These requests will be secured using the WS-Security X.509 security standard.
 func NewWSSEAuthInfo(certPath string, keyPath string) (*WSSEAuthInfo, error) {
+
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		return nil, err
@@ -51,6 +51,7 @@ func NewWSSEAuthInfo(certPath string, keyPath string) (*WSSEAuthInfo, error) {
 	return &WSSEAuthInfo{
 		certDER: cert,
 		key:     cert.PrivateKey,
+		sigRef:  make([]signatureReference, 0),
 	}, nil
 }
 
@@ -112,7 +113,20 @@ type signedInfo struct {
 
 	CanonicalizationMethod canonicalizationMethod
 	SignatureMethod        signatureMethod
-	Reference              signatureReference
+	Reference              []signatureReference
+}
+
+// =============================================================================
+// Web Services Security Utility (WSU)
+// =============================================================================
+// timestamp allows Timestamps to be applied anywhere element wildcards are
+// present, including as a SOAP header.
+type timestamp struct {
+	XMLName xml.Name `xml:"wsu:Timestamp,omitempty"`
+	XMLNS   string   `xml:"xmlns:wsu,attr"`
+	WsuID   string   `xml:"wsu:Id,attr"`
+	Created string   `xml:"wsu:Created"`
+	Expires string   `xml:"wsu:Expires"`
 }
 
 type strReference struct {
@@ -144,53 +158,41 @@ type signature struct {
 }
 
 type security struct {
-	XMLName xml.Name `xml:"wsse:Security"`
-	XMLNS   string   `xml:"xmlns:wsse,attr"`
+	XMLName        xml.Name `xml:"wsse:Security"`
+	XMLNS          string   `xml:"xmlns:wsse,attr"`
+	MustUnderstand int      `xml:"mustUnderstand,attr"`
 
 	BinarySecurityToken binarySecurityToken
 	Signature           signature
+	Timestamp           timestamp
 }
 
-func (w *WSSEAuthIDs) generateToken() ([]byte, error) {
-	// We use a concatentation of the time and 10 securely generated random numbers to be the tokens.
-	b := make([]byte, 10)
-
-	token := sha1.New()
-	token.Write([]byte(time.Now().Format(time.RFC3339)))
-
-	_, err := rand.Read(b)
-	if err != nil {
-		return nil, err
-	}
-
-	token.Write(b)
-	tokenHex := token.Sum(nil)
-
-	return tokenHex, nil
+func getWsuID() string {
+	return "WSSE" + uuid.New().String()
 }
+func (w *WSSEAuthInfo) addSignature(body any) error {
+	// 0. We create the id value and assign it to the incoming body.WsuID via reflect
+	id := getWsuID()
+	val := reflect.ValueOf(body)
 
-func generateWSSEAuthIDs() (*WSSEAuthIDs, error) {
-	w := &WSSEAuthIDs{}
-
-	securityTokenHex, err := w.generateToken()
-	if err != nil {
-		return nil, err
+	if val.Kind().String() != "ptr" {
+		return errors.New("addSignature: body must be pointer")
 	}
 
-	w.securityTokenID = fmt.Sprintf("SecurityToken-%x", securityTokenHex)
-
-	bodyTokenHex, err := w.generateToken()
-	if err != nil {
-		return nil, err
+	if val.Elem().Kind().String() != "struct" {
+		return errors.New("addSignature: body must point to struct")
 	}
 
-	w.bodyID = fmt.Sprintf("Body-%x", bodyTokenHex)
-	return w, nil
-}
-
-func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
-	// 0. We create the body_id and security_token_id values
-	body.ID = ids.bodyID
+	found := false
+	for i := 0; i < val.Elem().NumField(); i++ {
+		if strings.ToLower(val.Elem().Type().Field(i).Name) == "wsuid" {
+			val.Elem().Field(i).SetString(id)
+			found = true
+		}
+	}
+	if !found {
+		return errors.New("addSignature: body did not contain a WsuID struct field")
+	}
 
 	// 1. We create the DigestValue of the body.
 
@@ -198,18 +200,49 @@ func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
 	// Since we have a copy, this is ok
 	bodyEnc, err := xml.Marshal(body)
 	if err != nil {
-		return security{}, err
+		return err
 	}
 
-	canonBodyEnc, err := canonicalize(bodyEnc, "Body")
+	canonBodyEnc, err := canonicalize(bodyEnc, "")
 	if err != nil {
-		return security{}, err
+		return err
 	}
 
 	bodyHasher := sha1.New()
 	bodyHasher.Write(canonBodyEnc)
 	encodedBodyDigest := base64.StdEncoding.EncodeToString(bodyHasher.Sum(nil))
+	w.sigRef = append(w.sigRef, signatureReference{
+		URI: "#" + id,
+		Transforms: transforms{
+			Transform: transform{
+				Algorithm: canonicalizationExclusiveC14N,
+			},
+		},
+		DigestMethod: digestMethod{
+			Algorithm: sha1Sig,
+		},
+		DigestValue: digestValue{
+			Value: encodedBodyDigest,
+		},
+	})
+	return nil
+}
 
+func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
+
+	if err := w.addSignature(body); err != nil {
+		return security{}, err
+	}
+	timestamp := timestamp{
+		XMLNS:   wsuNS,
+		WsuID:   "",
+		Created: time.Now().UTC().Format("2006-01-02T15:04:05.999Z07:00"),
+		Expires: time.Now().UTC().Add(10 * time.Second).Format("2006-01-02T15:04:05.999Z07:00"),
+	}
+
+	if err := w.addSignature(&timestamp); err != nil {
+		return security{}, err
+	}
 	// 2. Set the DigestValue then sign the 'SignedInfo' struct
 	signedInfo := signedInfo{
 		XMLNS: dsigNS,
@@ -219,20 +252,7 @@ func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
 		SignatureMethod: signatureMethod{
 			Algorithm: rsaSha1Sig,
 		},
-		Reference: signatureReference{
-			URI: "#" + ids.bodyID,
-			Transforms: transforms{
-				Transform: transform{
-					Algorithm: canonicalizationExclusiveC14N,
-				},
-			},
-			DigestMethod: digestMethod{
-				Algorithm: sha1Sig,
-			},
-			DigestValue: digestValue{
-				Value: encodedBodyDigest,
-			},
-		},
+		Reference: w.sigRef,
 	}
 
 	signedInfoEnc, err := xml.Marshal(signedInfo)
@@ -253,12 +273,13 @@ func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
 
 	encodedSignatureValue := base64.StdEncoding.EncodeToString(signatureValue)
 	encodedCertificateValue := base64.StdEncoding.EncodeToString(w.certDER.Certificate[0])
-
+	securityTokenID := getWsuID()
 	secHeader := security{
-		XMLNS: wsseNS,
+		XMLNS:          wsseNS,
+		MustUnderstand: 1,
 		BinarySecurityToken: binarySecurityToken{
 			XMLNS:        wsuNS,
-			WsuID:        ids.securityTokenID,
+			WsuID:        securityTokenID,
 			EncodingType: encTypeBinary,
 			ValueType:    valTypeX509Token,
 			Value:        encodedCertificateValue,
@@ -272,12 +293,13 @@ func (w *WSSEAuthInfo) sign(body Body, ids *WSSEAuthIDs) (security, error) {
 					XMLNS: wsuNS,
 					Reference: strReference{
 						ValueType: valTypeX509Token,
-						URI:       "#" + ids.securityTokenID,
+						URI:       "#" + securityTokenID,
 					},
 				},
 			},
 		},
+		Timestamp: timestamp,
 	}
-
+	w.sigRef = make([]signatureReference, 0)
 	return secHeader, nil
 }

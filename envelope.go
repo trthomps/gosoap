@@ -72,18 +72,12 @@ func (e *Envelope) signWithWSSEInfo(info *WSSEAuthInfo) error {
 
 	e.Body.XMLNSWsu = wsuNS
 
-	ids, err := generateWSSEAuthIDs()
-	if err != nil {
-		return err
-	}
-
-	securityHeader, err := info.sign(*e.Body, ids)
+	securityHeader, err := info.securityHeader(e.Body)
 	if err != nil {
 		return err
 	}
 
 	e.AddHeaders(securityHeader)
-	e.Body.ID = ids.bodyID
 
 	return nil
 }
@@ -104,8 +98,8 @@ type Body struct {
 
 	// XMLNSWsu is the SOAP WS-Security utility namespace.
 	XMLNSWsu string `xml:"xmlns:wsu,attr,omitempty"`
-	// ID is a body ID used during WS-Security signing.
-	ID string `xml:"wsu:Id,attr,omitempty"`
+	// WsuID is a body WsuID used during WS-Security signing.
+	WsuID string `xml:"wsu:Id,attr,omitempty"`
 
 	// Fault is a SOAP fault we may detect in a response.
 	Fault *Fault `xml:",omitempty"`

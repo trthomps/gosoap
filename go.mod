@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/beevik/etree v1.2.0
+	github.com/google/uuid v1.3.1
 	github.com/stretchr/testify v1.3.0
 )
 
