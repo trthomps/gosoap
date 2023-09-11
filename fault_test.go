@@ -70,10 +70,10 @@ var faultDecodeTests = []faultDecodeTest{
 			Actor:   "FaultActorValue",
 			DetailInternal: &faultDetail{
 				Content: &faultDetailExample{
-					XMLName: xml.Name{"", "DetailInternal"},
+					XMLName: xml.Name{Space: "", Local: "DetailInternal"},
 					Attr1:   10,
 					Field1: faultDetailExampleField{
-						XMLName: xml.Name{"", "DetailField"},
+						XMLName: xml.Name{Space: "", Local: "DetailField"},
 						Attr1:   "test",
 						Attr2:   11,
 						Value:   "This is a test string",
@@ -101,7 +101,7 @@ var faultDecodeTests = []faultDecodeTest{
 			Actor:   "FaultActorValue",
 			DetailInternal: &faultDetail{
 				Content: &faultDetailExample{
-					XMLName: xml.Name{"", "DetailInternal"},
+					XMLName: xml.Name{Space: "", Local: "DetailInternal"},
 					Attr1:   10,
 					Field1:  faultDetailExampleField{},
 				},
@@ -133,20 +133,20 @@ var faultDecodeTests = []faultDecodeTest{
 			DetailInternal: &faultDetail{
 				Content: []faultDetailExample{
 					{
-						XMLName: xml.Name{"", "DetailInternal"},
+						XMLName: xml.Name{Space: "", Local: "DetailInternal"},
 						Attr1:   10,
 						Field1: faultDetailExampleField{
-							XMLName: xml.Name{"", "DetailField"},
+							XMLName: xml.Name{Space: "", Local: "DetailField"},
 							Attr1:   "test",
 							Attr2:   11,
 							Value:   "This is a test string",
 						},
 					},
 					{
-						XMLName: xml.Name{"", "DetailInternal"},
+						XMLName: xml.Name{Space: "", Local: "DetailInternal"},
 						Attr1:   11,
 						Field1: faultDetailExampleField{
-							XMLName: xml.Name{"", "DetailField"},
+							XMLName: xml.Name{Space: "", Local: "DetailField"},
 							Attr1:   "test2",
 							Attr2:   12,
 							Value:   "This is a second test string",

@@ -165,10 +165,10 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 					Actor:   "FaultActorValue",
 					DetailInternal: &faultDetail{
 						Content: &faultDetailExample{
-							XMLName: xml.Name{"", "DetailInternal"},
+							XMLName: xml.Name{Space: "", Local: "DetailInternal"},
 							Attr1:   10,
 							Field1: faultDetailExampleField{
-								XMLName: xml.Name{"", "DetailField"},
+								XMLName: xml.Name{Space: "", Local: "DetailField"},
 								Attr1:   "test",
 								Attr2:   11,
 								Value:   "This is a test string",
