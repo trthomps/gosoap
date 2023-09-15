@@ -1,10 +1,11 @@
 package soap
 
 import (
-	"encoding/xml"
 	"mime"
 	"net/http"
 	"strings"
+
+	"github.com/m29h/xml"
 )
 
 // Response contains the result of the request.

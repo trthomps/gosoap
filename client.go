@@ -3,6 +3,8 @@ package soap
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -46,6 +48,11 @@ func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
 		return nil, err
 	}
 	defer httpResp.Body.Close()
+
+	fmt.Println(httpResp.Header)
+	if b, err := io.ReadAll(httpResp.Body); err == nil {
+		fmt.Println(string(b))
+	}
 
 	resp := newResponse(httpResp, req)
 	err = resp.deserialize()

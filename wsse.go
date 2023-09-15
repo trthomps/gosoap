@@ -7,11 +7,13 @@ import (
 	"crypto/sha1"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/xml"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/m29h/xml"
 
 	"github.com/google/uuid"
 )
@@ -21,7 +23,6 @@ import (
 
 const (
 	wsseNS = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
-	wsuNS  = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
 	dsigNS = "http://www.w3.org/2000/09/xmldsig#"
 
 	encTypeBinary    = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary"
@@ -56,20 +57,22 @@ func NewWSSEAuthInfo(certPath string, keyPath string) (*WSSEAuthInfo, error) {
 }
 
 type binarySecurityToken struct {
-	XMLName xml.Name `xml:"wsse:BinarySecurityToken"`
-	XMLNS   string   `xml:"xmlns:wsu,attr"`
+	XMLName      xml.Name `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd BinarySecurityToken"`
+	WsuID        string   `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd Id,attr"`
+	EncodingType string   `xml:"EncodingType,attr"`
+	ValueType    string   `xml:"ValueType,attr"`
+	Value        string   `xml:",chardata"`
+}
 
-	WsuID string `xml:"wsu:Id,attr"`
-
-	EncodingType string `xml:"EncodingType,attr"`
-	ValueType    string `xml:"ValueType,attr"`
-
-	Value string `xml:",chardata"`
+type inclusiveNamespaces struct {
+	XMLName    xml.Name `xml:"http://www.w3.org/2001/10/xml-exc-c14n# InclusiveNamespaces"`
+	PrefixList string   `xml:"PrefixList,attr"`
 }
 
 type canonicalizationMethod struct {
-	XMLName   xml.Name `xml:"CanonicalizationMethod"`
-	Algorithm string   `xml:"Algorithm,attr"`
+	XMLName             xml.Name `xml:"CanonicalizationMethod"`
+	Algorithm           string   `xml:"Algorithm,attr"`
+	InclusiveNamespaces inclusiveNamespaces
 }
 
 type signatureMethod struct {
@@ -98,7 +101,7 @@ type transforms struct {
 }
 
 type signatureReference struct {
-	XMLName xml.Name `xml:"Reference"`
+	XMLName xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# Reference"`
 	URI     string   `xml:"URI,attr"`
 
 	Transforms transforms
@@ -108,8 +111,7 @@ type signatureReference struct {
 }
 
 type signedInfo struct {
-	XMLName xml.Name `xml:"SignedInfo"`
-	XMLNS   string   `xml:"xmlns,attr"`
+	XMLName xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# SignedInfo"`
 
 	CanonicalizationMethod canonicalizationMethod
 	SignatureMethod        signatureMethod
@@ -122,35 +124,32 @@ type signedInfo struct {
 // timestamp allows Timestamps to be applied anywhere element wildcards are
 // present, including as a SOAP header.
 type timestamp struct {
-	XMLName xml.Name `xml:"wsu:Timestamp,omitempty"`
-	XMLNS   string   `xml:"xmlns:wsu,attr"`
-	WsuID   string   `xml:"wsu:Id,attr"`
-	Created string   `xml:"wsu:Created"`
-	Expires string   `xml:"wsu:Expires"`
+	XMLName xml.Name `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd Timestamp,omitempty"`
+	WsuID   string   `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd Id,attr"`
+	Created string   `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd Created"`
+	Expires string   `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd Expires"`
 }
 
 type strReference struct {
-	XMLName   xml.Name `xml:"wsse:Reference"`
+	XMLName   xml.Name `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd Reference"`
 	ValueType string   `xml:"ValueType,attr"`
 	URI       string   `xml:"URI,attr"`
 }
 
 type securityTokenReference struct {
-	XMLName xml.Name `xml:"wsse:SecurityTokenReference"`
-	XMLNS   string   `xml:"xmlns:wsu,attr"`
+	XMLName xml.Name `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd SecurityTokenReference"`
 
 	Reference strReference
 }
 
 type keyInfo struct {
-	XMLName xml.Name `xml:"KeyInfo"`
+	XMLName xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# KeyInfo"`
 
 	SecurityTokenReference securityTokenReference
 }
 
 type signature struct {
-	XMLName xml.Name `xml:"Signature"`
-	XMLNS   string   `xml:"xmlns,attr"`
+	XMLName xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# Signature"`
 
 	SignedInfo     signedInfo
 	SignatureValue string `xml:"SignatureValue"`
@@ -158,9 +157,8 @@ type signature struct {
 }
 
 type security struct {
-	XMLName        xml.Name `xml:"wsse:Security"`
-	XMLNS          string   `xml:"xmlns:wsse,attr"`
-	MustUnderstand int      `xml:"mustUnderstand,attr"`
+	XMLName        xml.Name `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd Security"`
+	MustUnderstand int      `xml:"http://schemas.xmlsoap.org/soap/envelope/ mustUnderstand,attr"`
 
 	BinarySecurityToken binarySecurityToken
 	Signature           signature
@@ -170,10 +168,10 @@ type security struct {
 func getWsuID() string {
 	return "WSSE" + uuid.New().String()
 }
-func (w *WSSEAuthInfo) addSignature(body any) error {
+func (w *WSSEAuthInfo) addSignature(element any) error {
 	// 0. We create the id value and assign it to the incoming body.WsuID via reflect
 	id := getWsuID()
-	val := reflect.ValueOf(body)
+	val := reflect.ValueOf(element)
 
 	if val.Kind().String() != "ptr" {
 		return errors.New("addSignature: body must be pointer")
@@ -198,18 +196,26 @@ func (w *WSSEAuthInfo) addSignature(body any) error {
 
 	// We make some changes to canonicalize things.
 	// Since we have a copy, this is ok
-	bodyEnc, err := xml.Marshal(body)
+	bodyEnc, err := xml.Marshal(element)
 	if err != nil {
 		return err
 	}
 
-	canonBodyEnc, err := canonicalize(bodyEnc, "")
-	if err != nil {
-		return err
-	}
+	/*
+		canonBodyEnc, err := canonicalize(bodyEnc, "")
+		if err != nil {
+			return err
+		}
+		//TODO: remove this once it is confirmed that xml.Marshal handles most relevant cases
+		if !bytes.Equal(canonBodyEnc, bodyEnc) {
+			fmt.Printf("WARNING canonicalization ambiguity happend while processing:\n%s\n%s\n", bodyEnc, canonBodyEnc)
+		}
+
+	*/
+	fmt.Printf("Signing:\n%s\n", bodyEnc)
 
 	bodyHasher := sha1.New()
-	bodyHasher.Write(canonBodyEnc)
+	bodyHasher.Write(bodyEnc)
 	encodedBodyDigest := base64.StdEncoding.EncodeToString(bodyHasher.Sum(nil))
 	w.sigRef = append(w.sigRef, signatureReference{
 		URI: "#" + id,
@@ -234,7 +240,6 @@ func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
 		return security{}, err
 	}
 	timestamp := timestamp{
-		XMLNS:   wsuNS,
 		WsuID:   "",
 		Created: time.Now().UTC().Format("2006-01-02T15:04:05.999Z07:00"),
 		Expires: time.Now().UTC().Add(10 * time.Second).Format("2006-01-02T15:04:05.999Z07:00"),
@@ -245,7 +250,6 @@ func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
 	}
 	// 2. Set the DigestValue then sign the 'SignedInfo' struct
 	signedInfo := signedInfo{
-		XMLNS: dsigNS,
 		CanonicalizationMethod: canonicalizationMethod{
 			Algorithm: canonicalizationExclusiveC14N,
 		},
@@ -259,7 +263,6 @@ func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
 	if err != nil {
 		return security{}, err
 	}
-
 	signedInfoHasher := sha1.New()
 	signedInfoHasher.Write(signedInfoEnc)
 	signedInfoDigest := signedInfoHasher.Sum(nil)
@@ -275,22 +278,18 @@ func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
 	encodedCertificateValue := base64.StdEncoding.EncodeToString(w.certDER.Certificate[0])
 	securityTokenID := getWsuID()
 	secHeader := security{
-		XMLNS:          wsseNS,
 		MustUnderstand: 1,
 		BinarySecurityToken: binarySecurityToken{
-			XMLNS:        wsuNS,
 			WsuID:        securityTokenID,
 			EncodingType: encTypeBinary,
 			ValueType:    valTypeX509Token,
 			Value:        encodedCertificateValue,
 		},
 		Signature: signature{
-			XMLNS:          dsigNS,
 			SignedInfo:     signedInfo,
 			SignatureValue: encodedSignatureValue,
 			KeyInfo: keyInfo{
 				SecurityTokenReference: securityTokenReference{
-					XMLNS: wsuNS,
 					Reference: strReference{
 						ValueType: valTypeX509Token,
 						URI:       "#" + securityTokenID,

@@ -1,8 +1,9 @@
 package soap
 
 import (
-	"encoding/xml"
 	"errors"
+
+	"github.com/m29h/xml"
 )
 
 const xsdNS = "http://www.w3.org/2001/XMLSchema"
@@ -21,12 +22,12 @@ type Envelope struct {
 	// XMLName is the serialized name of this object.
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
 
-	// These are generic namespaces used by all messages.
-	XMLNSXsd string `xml:"xmlns:xsd,attr,omitempty"`
-	XMLNSXsi string `xml:"xmlns:xsi,attr,omitempty"`
-
 	Header *Header
 	Body   *Body
+}
+
+func init() {
+
 }
 
 // NewEnvelope creates a new SOAP Envelope with the specified data as the content to serialize or deserialize.
@@ -44,12 +45,9 @@ func NewEnvelope(content interface{}) *Envelope {
 // It uses the supplied fault detail struct when deserializing a potential SOAP fault.
 // Headers are assumed to be omitted unless explicitly added via AddHeaders()
 func NewEnvelopeWithFault(content interface{}, faultDetail interface{}) *Envelope {
-	return &Envelope{
-		Body: &Body{
-			Content: content,
-			Fault:   NewFaultWithDetail(faultDetail),
-		},
-	}
+	env := NewEnvelope(content)
+	env.Body.Fault = NewFaultWithDetail(faultDetail)
+	return env
 }
 
 // AddHeaders adds additional headers to be serialized to the resulting SOAP envelope.
@@ -63,14 +61,10 @@ func (e *Envelope) AddHeaders(elems ...interface{}) {
 
 // signWithWSSEInfo takes the supplied auth info, uses the WS Security X.509 signing standard and adds the resulting header.
 func (e *Envelope) signWithWSSEInfo(info *WSSEAuthInfo) error {
-	e.XMLNSXsd = xsdNS
-	e.XMLNSXsi = xsiNS
 
 	if e.Body.Content == nil {
 		return ErrUnableToSignEmptyEnvelope
 	}
-
-	e.Body.XMLNSWsu = wsuNS
 
 	securityHeader, err := info.securityHeader(e.Body)
 	if err != nil {
@@ -86,7 +80,6 @@ func (e *Envelope) signWithWSSEInfo(info *WSSEAuthInfo) error {
 type Header struct {
 	// XMLName is the serialized name of this object.
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Header"`
-
 	// Headers is an array of envelope headers to send.
 	Headers []interface{} `xml:",omitempty"`
 }
@@ -95,11 +88,8 @@ type Header struct {
 type Body struct {
 	// XMLName is the serialized name of this object.
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
-
 	// XMLNSWsu is the SOAP WS-Security utility namespace.
-	XMLNSWsu string `xml:"xmlns:wsu,attr,omitempty"`
-	// WsuID is a body WsuID used during WS-Security signing.
-	WsuID string `xml:"wsu:Id,attr,omitempty"`
+	WsuID string `xml:"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd Id,attr,omitempty"`
 
 	// Fault is a SOAP fault we may detect in a response.
 	Fault *Fault `xml:",omitempty"`

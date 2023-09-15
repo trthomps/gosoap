@@ -1,13 +1,14 @@
 package soap
 
 import (
-	"encoding/xml"
 	"errors"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"reflect"
 	"strings"
+
+	"github.com/m29h/xml"
 
 	"github.com/beevik/etree"
 )

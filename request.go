@@ -2,9 +2,13 @@ package soap
 
 import (
 	"bytes"
-	"encoding/xml"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+
+	"github.com/m29h/xml"
 )
 
 // Request represents a single request to a SOAP service.
@@ -72,15 +76,19 @@ func (r *Request) serialize() (io.Reader, error) {
 			return nil, err
 		}
 
-		envelopeEnc, err = canonicalize(envelopeEnc, "Envelope/Body")
-		if err != nil {
-			return nil, err
-		}
+		/*		envelopeEnc, err = canonicalize(envelopeEnc, "Envelope/Body")
+				if err != nil {
+					return nil, err
+				}*/
 	} else {
 		envelopeEnc, err = xml.Marshal(envelope)
 		if err != nil {
 			return nil, err
 		}
+	}
+	//fmt.Println(string(envelopeEnc))
+	if err := os.WriteFile("request.xml", envelopeEnc, 0666); err != nil {
+		log.Fatal(err)
 	}
 
 	return bytes.NewBuffer(envelopeEnc), nil
@@ -91,6 +99,7 @@ func (r *Request) httpRequest() (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(r.url)
 
 	httpReq, err := http.NewRequest("POST", r.url, buf)
 	if err != nil {

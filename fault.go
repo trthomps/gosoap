@@ -1,9 +1,10 @@
 package soap
 
 import (
-	"encoding/xml"
 	"errors"
 	"fmt"
+
+	"github.com/m29h/xml"
 )
 
 var (

@@ -1,10 +1,11 @@
 module github.com/m29h/gosoap
 
-go 1.21
+go 1.21.1
 
 require (
 	github.com/beevik/etree v1.2.0
 	github.com/google/uuid v1.3.1
+	github.com/m29h/xml v1.0.0
 	github.com/stretchr/testify v1.3.0
 )
 

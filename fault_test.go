@@ -2,10 +2,11 @@ package soap
 
 import (
 	"bytes"
-	"encoding/xml"
 	"reflect"
 	"strconv"
 	"testing"
+
+	"github.com/m29h/xml"
 )
 
 var faultName = xml.Name{

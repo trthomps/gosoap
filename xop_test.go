@@ -1,10 +1,11 @@
 package soap
 
 import (
-	"encoding/xml"
 	"mime"
 	"strings"
 	"testing"
+
+	"github.com/m29h/xml"
 
 	"github.com/stretchr/testify/assert"
 )

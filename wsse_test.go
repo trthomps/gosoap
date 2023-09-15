@@ -1,9 +1,10 @@
 package soap
 
 import (
-	"encoding/xml"
 	"errors"
 	"testing"
+
+	"github.com/m29h/xml"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -81,5 +82,4 @@ func TestSecurityHeader(t *testing.T) {
 	assert.NoError(t, err)
 	//fmt.Println(b)
 	assert.Contains(t, b, "</wsu:Expires>")
-
 }

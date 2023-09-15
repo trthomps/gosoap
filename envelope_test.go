@@ -2,9 +2,10 @@ package soap
 
 import (
 	"bytes"
-	"encoding/xml"
 	"reflect"
 	"testing"
+
+	"github.com/m29h/xml"
 )
 
 var envelopeName = xml.Name{
@@ -17,7 +18,7 @@ var bodyName = xml.Name{
 }
 
 type headerExample struct {
-	XMLName xml.Name `xml:"HeaderExample"`
+	XMLName xml.Name `xml:"ns HeaderExample"`
 	Attr1   int32    `xml:"attr1,attr"`
 	Value   string   `xml:",chardata"`
 }
@@ -30,7 +31,7 @@ type envelopeExampleField struct {
 }
 
 type envelopeContentExample struct {
-	XMLName xml.Name             `xml:"ContentExample"`
+	XMLName xml.Name             `xml:"ns ContentExample"`
 	Attr1   int32                `xml:"attr1,attr"`
 	Field1  envelopeExampleField `xml:"ContentField"`
 }
@@ -45,8 +46,7 @@ type envelopeEncodeTest struct {
 var envelopeEncodeTests = []envelopeEncodeTest{
 	{
 		contentPtr: &envelopeContentExample{
-			XMLName: xml.Name{Local: "ContentExample"},
-			Attr1:   10,
+			Attr1: 10,
 			Field1: envelopeExampleField{
 				XMLName: xml.Name{Local: "ContentField"},
 				Attr1:   "test attr",
@@ -54,7 +54,7 @@ var envelopeEncodeTests = []envelopeEncodeTest{
 				Value:   "This is a test string",
 			},
 		},
-		res: `<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body xmlns="http://schemas.xmlsoap.org/soap/envelope/"><ContentExample attr1="10"><ContentField attr1="test attr" attr2="11">This is a test string</ContentField></ContentExample></Body></Envelope>`,
+		res: `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><ns:ContentExample xmlns:ns="ns" attr1="10"><ns:ContentField attr1="test attr" attr2="11">This is a test string</ns:ContentField></ns:ContentExample></soapenv:Body></soapenv:Envelope>`,
 	},
 	{
 		contentPtr: &envelopeContentExample{
@@ -73,7 +73,7 @@ var envelopeEncodeTests = []envelopeEncodeTest{
 				Value: "test header value",
 			},
 		},
-		res: `<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Header xmlns="http://schemas.xmlsoap.org/soap/envelope/"><HeaderExample attr1="15">test header value</HeaderExample></Header><Body xmlns="http://schemas.xmlsoap.org/soap/envelope/"><ContentExample attr1="10"><ContentField attr1="test attr" attr2="11">This is a test string</ContentField></ContentExample></Body></Envelope>`,
+		res: `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Header><ns:HeaderExample xmlns:ns="ns" attr1="15">test header value</ns:HeaderExample></soapenv:Header><soapenv:Body><ns:ContentExample xmlns:ns="ns" attr1="10"><ns:ContentField attr1="test attr" attr2="11">This is a test string</ns:ContentField></ns:ContentExample></soapenv:Body></soapenv:Envelope>`,
 	},
 }
 
@@ -96,7 +96,7 @@ func TestEnvelopeEncode(t *testing.T) {
 		}
 
 		if tt.res != res.String() {
-			t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, res.String(), tt.res)
+			t.Errorf("#%d: mismatch\nhave: `%s`\nwant: `%s`", i, res.String(), tt.res)
 			continue
 		}
 	}
@@ -115,7 +115,7 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 		in: `<?xml version="1.0"?>
 			<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
 				<soap:Body>
-					<ContentExample attr1="10">
+					<ContentExample xmlns="ns" attr1="10">
 						<ContentField attr1="test attr" attr2="11">This is a test content string</ContentField>
 					</ContentExample>
 				</soap:Body>
@@ -208,7 +208,7 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 		in: `<?xml version="1.0"?>
 			<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
 				<soap:Body>
-					<ContentExample attr1="10">
+					<ContentExample xmlns="ns" attr1="10">
 						<ContentField attr1="test attr" attr2="11">This is a test content string</ContentField>
 				</soap:Body>
 					</ContentExample>
@@ -221,7 +221,7 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 		in: `<?xml version="1.0"?>
 			<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
 				<soap:Body>
-					<ContentExample attr1="10">
+					<ContentExample xmlns="ns" attr1="10">
 						<ContentField attr1="test attr", attr2="11">This is a test content string</ContentField>
 					</ContentExample>
 				</soap:Body>
@@ -254,7 +254,7 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 		in: `<?xml version="1.0"?>
 			<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
 				<soap:Body>
-					<ContentExample attr1="10">
+					<ContentExample xmlns="ns" attr1="10">
 						<ContentField attr1="test attr", attr2="11">This is a test content string</ContentField>
 					</ContentExample>
 				</soap:Body>
