@@ -2,23 +2,29 @@
 
 This library provides primitives for operating on a SOAP-based web service. The library supports encrypting the SOAP request using the WS-Security x.509 protocol, enabling SOAP calls against secured web services.
 
-A basic example usage would be as follows:
+The following sub-features are currently enabled by default when WS-Security is enabled with the SignWith(...) method:
+- Include a [wsse](http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd):SecurityTokenReference with the signature public key in form of a [wsu](http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd):BinarySecurityToken
+- Automatically add a [wsu](http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd):Timestamp with validity 10 seconds  
+- Automatically generate a wsu:Id and use this #ID as URI to reference the respective signed element(s) 
+- Sign Timestamp + Body elements of the SOAP message by default
+- Other elements can be signed (in theory) with the (currently unexported) addSignature() method
+- C14N canonicalization is ensured by marshaling the relevant to be signed sections with the [github.com/m29h/xml](https://github.com/m29h/xml) package
 
-```
+Of course this library can also do basic SOAP (without WS-Security x.509)
+
+## A basic example usage would be as follows:
+
+```go
 include (
     "context"
     "github.com/m29h/gosoap"
 )
 
 main() {
-	var (
-		certFile = flag.String("cert", "", "A PEM encoded cert file")
-		keyFile  = flag.String("key", "", "A PEM encoded key file")
-	)
+	certFile := "cert.pem"
+	keyFile := "key.pem"
 
-	flag.Parse()
-
-	wsseInfo, authErr := soap.NewWSSEAuthInfo(*certFile, *keyFile)
+	wsseInfo, authErr := soap.NewWSSEAuthInfo(certFile, keyFile)
 	if authErr != nil {
 		fmt.Printf("Auth error: %s\n", authErr.Error())
 		return
@@ -40,7 +46,7 @@ main() {
     soapReq.AddHeader(...)
     soapReq.AddHeader(...)
     
-    // Sign the request
+    // Sign the request with WS-Security x.509
     soapReq.SignWith(wsseInfo)
     
     // Create the SOAP client
@@ -69,6 +75,4 @@ main() {
 }
 ```
 
-The code is very loosely based off the SOAP client that is part of the https://github.com/hooklift/gowsdl project.
-
-See https://github.com/rmrobinson-textnow/gowsdl for a heavily forked version of the above gowsdl project that auto-generates code from WSDL files that uses this library for performing the SOAP requests.
+The code is very loosely based off the SOAP client https://github.com/textnow/gosoap.

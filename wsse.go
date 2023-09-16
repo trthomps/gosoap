@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -200,19 +199,6 @@ func (w *WSSEAuthInfo) addSignature(element any) error {
 	if err != nil {
 		return err
 	}
-
-	/*
-		canonBodyEnc, err := canonicalize(bodyEnc, "")
-		if err != nil {
-			return err
-		}
-		//TODO: remove this once it is confirmed that xml.Marshal handles most relevant cases
-		if !bytes.Equal(canonBodyEnc, bodyEnc) {
-			fmt.Printf("WARNING canonicalization ambiguity happend while processing:\n%s\n%s\n", bodyEnc, canonBodyEnc)
-		}
-
-	*/
-	fmt.Printf("Signing:\n%s\n", bodyEnc)
 
 	bodyHasher := sha1.New()
 	bodyHasher.Write(bodyEnc)

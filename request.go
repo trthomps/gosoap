@@ -76,10 +76,6 @@ func (r *Request) serialize() (io.Reader, error) {
 			return nil, err
 		}
 
-		/*		envelopeEnc, err = canonicalize(envelopeEnc, "Envelope/Body")
-				if err != nil {
-					return nil, err
-				}*/
 	} else {
 		envelopeEnc, err = xml.Marshal(envelope)
 		if err != nil {
