@@ -2,6 +2,7 @@ package soap
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/m29h/xml"
 )
@@ -11,8 +12,6 @@ const xsiNS = "http://www.w3.org/2001/XMLSchema-instance"
 const soapEnvNS = "http://schemas.xmlsoap.org/soap/envelope/"
 
 var (
-	// ErrUnableToSignEmptyEnvelope is returned if the envelope to be signed is empty. This is not valid.
-	ErrUnableToSignEmptyEnvelope = errors.New("unable to sign, envelope is empty")
 	// ErrEnvelopeMisconfigured is returned if we attempt to deserialize a SOAP envelope without a type to deserialize the body or fault into.
 	ErrEnvelopeMisconfigured = errors.New("envelope content or fault pointer empty")
 )
@@ -26,54 +25,33 @@ type Envelope struct {
 	Body   *Body
 }
 
+// HeaderBuilder is a function that takes a interface to the body and
+// returns the finished header and an error
+type HeaderBuilder func(body any) (any, error)
+
 func init() {
 
 }
 
 // NewEnvelope creates a new SOAP Envelope with the specified data as the content to serialize or deserialize.
-// It defaults to a fault struct with no detail type.
+// It defaults to a fault struct with no detail type. Content of the fault detail is wrapped into the error type.
 // Headers are assumed to be omitted unless explicitly added via AddHeaders()
 func NewEnvelope(content interface{}) *Envelope {
-	return &Envelope{
-		Body: &Body{
-			Content: content,
-		},
+	switch v := content.(type) {
+	case []any: // content array with multiple elements
+		return &Envelope{Body: &Body{Content: v}}
 	}
-}
-
-// NewEnvelopeWithFault creates a new SOAP Envelope with the specified data as the content to serialize or deserialize.
-// It uses the supplied fault detail struct when deserializing a potential SOAP fault.
-// Headers are assumed to be omitted unless explicitly added via AddHeaders()
-func NewEnvelopeWithFault(content interface{}, faultDetail interface{}) *Envelope {
-	env := NewEnvelope(content)
-	env.Body.Fault = NewFaultWithDetail(faultDetail)
-	return env
+	//single element body content
+	return &Envelope{Body: &Body{Content: []any{content}}}
 }
 
 // AddHeaders adds additional headers to be serialized to the resulting SOAP envelope.
-func (e *Envelope) AddHeaders(elems ...interface{}) {
+func (e *Envelope) AddHeaders(elems ...any) {
 	if e.Header == nil {
 		e.Header = &Header{}
 	}
 
 	e.Header.Headers = append(e.Header.Headers, elems)
-}
-
-// signWithWSSEInfo takes the supplied auth info, uses the WS Security X.509 signing standard and adds the resulting header.
-func (e *Envelope) signWithWSSEInfo(info *WSSEAuthInfo) error {
-
-	if e.Body.Content == nil {
-		return ErrUnableToSignEmptyEnvelope
-	}
-
-	securityHeader, err := info.securityHeader(e.Body)
-	if err != nil {
-		return err
-	}
-
-	e.AddHeaders(securityHeader)
-
-	return nil
 }
 
 // Header is a SOAP envelope header.
@@ -94,7 +72,7 @@ type Body struct {
 	// Fault is a SOAP fault we may detect in a response.
 	Fault *Fault `xml:",omitempty"`
 	// Body is a SOAP request or response body.
-	Content interface{} `xml:",omitempty"`
+	Content []interface{} `xml:",omitempty"`
 }
 
 // UnmarshalXML is an overridden deserialization routine used to decode a SOAP envelope body.
@@ -103,13 +81,16 @@ type Body struct {
 func (b *Body) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	if b.Content == nil {
 		return ErrEnvelopeMisconfigured
-	} else if b.Fault == nil {
-		// We allow for a custom fault detail object to be supplied.
-		// If it isn't there, we will set it to a default.
-		// We can't set this on construction as we may be serializing a message and don't want to serialize an empty fault.
-		b.Fault = NewFault()
 	}
+	for _, c := range b.Content {
+		if c == nil {
+			return ErrEnvelopeMisconfigured
+		}
+	}
+	b.Fault = NewFault()
 
+	elementDone := make([]bool, len(b.Content))
+tokens:
 	for {
 		token, err := d.Token()
 		if err != nil {
@@ -121,20 +102,35 @@ func (b *Body) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		switch elem := token.(type) {
 		case xml.StartElement:
 			// If the start element is a fault decode it as a fault, otherwise parse it as content.
+			var err error
 			if elem.Name.Space == soapEnvNS && elem.Name.Local == "Fault" {
 				err = d.DecodeElement(b.Fault, &elem)
 				if err != nil {
 					return err
 				}
 				// Clear the content if we have a fault
+				if b.Fault.DetailInternal.Content == "" {
+					b.Fault.DetailInternal = nil
+				}
 				b.Content = nil
 			} else {
-				err = d.DecodeElement(b.Content, &elem)
+				for i := range b.Content {
+					if elementDone[i] {
+						continue
+					}
+					err = d.DecodeElement(b.Content[i], &elem)
+					if err != nil {
+						continue
+					} else {
+						elementDone[i] = true
+						b.Fault = nil
+						continue tokens
+					}
+				}
 				if err != nil {
 					return err
 				}
-				// Clear the fault if we have content
-				b.Fault = nil
+				return fmt.Errorf("received token %s %s in body but have no content field to unmarshal to", elem.Name.Space, elem.Name.Local)
 			}
 		case xml.EndElement:
 			// We expect the Body to have a single entry, so once we encounter the end element we're done.

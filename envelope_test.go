@@ -125,13 +125,14 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 			XMLName: envelopeName,
 			Body: &Body{
 				XMLName: bodyName,
-				Content: &envelopeContentExample{
+				Content: []any{&envelopeContentExample{
 					Attr1: 10,
 					Field1: envelopeExampleField{
 						Attr1: "test attr",
 						Attr2: 11,
 						Value: "This is a test content string",
 					},
+				},
 				},
 			},
 		},
@@ -164,16 +165,11 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 					String:  "FaultStringValue",
 					Actor:   "FaultActorValue",
 					DetailInternal: &faultDetail{
-						Content: &faultDetailExample{
-							XMLName: xml.Name{Space: "", Local: "DetailInternal"},
-							Attr1:   10,
-							Field1: faultDetailExampleField{
-								XMLName: xml.Name{Space: "", Local: "DetailField"},
-								Attr1:   "test",
-								Attr2:   11,
-								Value:   "This is a test string",
-							},
-						},
+						Content: `
+							<DetailExample attr1="10">
+								<DetailField attr1="test" attr2="11">This is a test string</DetailField>
+							</DetailExample>
+						`,
 					},
 				},
 			},
@@ -196,10 +192,11 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 			Body: &Body{
 				XMLName: bodyName,
 				Fault: &Fault{
-					XMLName: faultName,
-					Code:    "FaultCodeValue",
-					String:  "FaultStringValue",
-					Actor:   "FaultActorValue",
+					XMLName:        faultName,
+					Code:           "FaultCodeValue",
+					String:         "FaultStringValue",
+					Actor:          "FaultActorValue",
+					DetailInternal: nil,
 				},
 			},
 		},
@@ -268,11 +265,8 @@ var envelopeDecodeTests = []envelopeDecodeTest{
 func TestEnvelopeDecode(t *testing.T) {
 	for i, tt := range envelopeDecodeTests {
 		var val *Envelope
-		if tt.faultPtr != nil {
-			val = NewEnvelopeWithFault(tt.contentPtr, tt.faultPtr)
-		} else {
-			val = NewEnvelope(tt.contentPtr)
-		}
+		val = NewEnvelope(tt.contentPtr)
+
 		dec := xml.NewDecoder(bytes.NewReader([]byte(tt.in)))
 
 		if err := dec.Decode(val); !reflect.DeepEqual(err, tt.err) {
@@ -284,9 +278,7 @@ func TestEnvelopeDecode(t *testing.T) {
 		valStr, _ := xml.Marshal(val)
 		outStr, _ := xml.Marshal(tt.out)
 		if string(valStr) != string(outStr) {
-			t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, val, tt.out)
-			println(string(valStr))
-			println(string(outStr))
+			t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, string(valStr), string(outStr))
 			continue
 		}
 	}

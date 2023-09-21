@@ -12,16 +12,14 @@ import (
 type Response struct {
 	*http.Response
 
-	body        interface{}
-	fault       *Fault
-	faultDetail interface{}
+	body  interface{}
+	fault *Fault
 }
 
 func newResponse(httpResp *http.Response, req *Request) *Response {
 	return &Response{
-		Response:    httpResp,
-		body:        req.resp,
-		faultDetail: req.fault,
+		Response: httpResp,
+		body:     req.resp,
 	}
 }
 
@@ -41,7 +39,7 @@ func (r *Response) deserialize() error {
 		return err
 	}
 
-	envelope := NewEnvelopeWithFault(r.body, r.faultDetail)
+	envelope := NewEnvelope(r.body)
 
 	if strings.HasPrefix(mediaType, "multipart/") {
 		// Here we handle any SOAP requests embedded in a MIME multipart response.

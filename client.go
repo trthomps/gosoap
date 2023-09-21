@@ -1,10 +1,10 @@
+// Package soap provides a modular SOAP client with the WS-Security x.509 protocol support including features
+// such as wsu:Timestamp and wsu:BinarySecurityToken, enabling SOAP calls against secured web services
 package soap
 
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
 )
 
@@ -19,46 +19,56 @@ var (
 
 // Client is an opaque handle to a SOAP service.
 type Client struct {
-	http *http.Client
+	url     string
+	http    *http.Client
+	headers []HeaderBuilder
 }
 
 // NewClient creates a new Client that will access a SOAP service.
 // Requests made using this client will all be wrapped in a SOAP envelope.
 // See https://www.w3schools.com/xml/xml_soap.asp for more details.
 // The default HTTP client used has no timeout nor circuit breaking. Override with SettHTTPClient. You have been warned.
-func NewClient(http *http.Client) *Client {
+func NewClient(url string, soapHeaders ...HeaderBuilder) *Client {
 	return &Client{
-		http: http,
+		url:     url,
+		http:    http.DefaultClient,
+		headers: soapHeaders,
 	}
+}
+
+// SettHTTPClient sets a custom http.Client instance to be used for all communications (e.g. for seting timeouts)
+func (c *Client) SettHTTPClient(http *http.Client) {
+	c.http = http
 }
 
 // Do invokes the SOAP request using its internal parameters.
 // The request argument is serialized to XML, and if the call is successful the received XML
 // is deserialized into the response argument.
 // Any errors that are encountered are returned.
-// If a SOAP fault is detected, then the 'details' property of the SOAP envelope will be deserialized into the faultDetailType argument.
-func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
+// If a SOAP fault is detected, then the 'details' property of the SOAP envelope will be appended into the faultDetailType argument.
+func (c *Client) Do(ctx context.Context, action string, request any, response any) error {
+
+	req := NewRequest(action, c.url, request, response, nil)
+	req.AddHeader(c.headers...)
 	httpReq, err := req.httpRequest()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	httpResp, err := c.http.Do(httpReq.WithContext(ctx))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer httpResp.Body.Close()
-
-	fmt.Println(httpResp.Header)
-	if b, err := io.ReadAll(httpResp.Body); err == nil {
-		fmt.Println(string(b))
-	}
 
 	resp := newResponse(httpResp, req)
 	err = resp.deserialize()
 	if err != nil {
-		return nil, err
+		return err
+	}
+	if resp.Fault() != nil {
+		return resp.Fault()
 	}
 
-	return resp, nil
+	return nil
 }

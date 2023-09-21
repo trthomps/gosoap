@@ -2,7 +2,6 @@ package soap
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -13,12 +12,10 @@ import (
 
 // Request represents a single request to a SOAP service.
 type Request struct {
-	headers []interface{}
-
-	url    string
-	action string
-
-	wsseInfo *WSSEAuthInfo
+	headers []HeaderBuilder
+	method  string
+	url     string
+	action  string
 
 	body  interface{}
 	resp  interface{}
@@ -46,43 +43,27 @@ func NewRequest(action string, url string, body interface{}, respType interface{
 
 // AddHeader adds the header argument to the list of elements set in the SOAP envelope Header element.
 // This will be serialized to XML when the request is made to the service.
-func (r *Request) AddHeader(header interface{}) {
-	r.headers = append(r.headers, header)
-}
-
-// SignWith supplies the authentication data to use for signing.
-func (r *Request) SignWith(wsseInfo *WSSEAuthInfo) {
-	r.wsseInfo = wsseInfo
+func (r *Request) AddHeader(header ...HeaderBuilder) {
+	r.headers = append(r.headers, header...)
 }
 
 // serialize takes the data supplied in the request and serializes the SOAP data to the returned reader.
 func (r *Request) serialize() (io.Reader, error) {
 	envelope := NewEnvelope(r.body)
 
-	if len(r.headers) > 0 {
-		envelope.AddHeaders(r.headers)
-	}
-
-	var envelopeEnc []byte
-	var err error
-
-	if r.wsseInfo != nil {
-		if err := envelope.signWithWSSEInfo(r.wsseInfo); err != nil {
-			return nil, err
-		}
-
-		envelopeEnc, err = xml.Marshal(envelope)
+	for _, h := range r.headers {
+		header, err := h(envelope.Body)
 		if err != nil {
 			return nil, err
 		}
-
-	} else {
-		envelopeEnc, err = xml.Marshal(envelope)
-		if err != nil {
-			return nil, err
-		}
+		envelope.AddHeaders(header)
 	}
-	//fmt.Println(string(envelopeEnc))
+
+	envelopeEnc, err := xml.Marshal(envelope)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := os.WriteFile("request.xml", envelopeEnc, 0666); err != nil {
 		log.Fatal(err)
 	}
@@ -95,7 +76,6 @@ func (r *Request) httpRequest() (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(r.url)
 
 	httpReq, err := http.NewRequest("POST", r.url, buf)
 	if err != nil {
