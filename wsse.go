@@ -4,7 +4,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -18,18 +18,23 @@ import (
 )
 
 // Implements the WS-Security standard using X.509 certificate signatures.
+// use SHA256 as default HMAC for signing purposes
 // https://www.di-mgt.com.au/xmldsig2.html is a handy reference to the WS-Security signing process.
 
 const (
-	wsseNS = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
-	dsigNS = "http://www.w3.org/2000/09/xmldsig#"
-
-	encTypeBinary    = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary"
-	valTypeX509Token = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3"
-
+	encTypeBinary                 = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary"
+	valTypeX509Token              = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3"
 	canonicalizationExclusiveC14N = "http://www.w3.org/2001/10/xml-exc-c14n#"
-	rsaSha1Sig                    = "http://www.w3.org/2000/09/xmldsig#rsa-sha1"
-	sha1Sig                       = "http://www.w3.org/2000/09/xmldsig#sha1"
+	//https://www.w3.org/TR/xmldsig-core1/#sec-MessageDigests
+	rsaSha1Sig   = "http://www.w3.org/2000/09/xmldsig#rsa-sha1"
+	rsaSha256Sig = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+	sha1Sig      = "http://www.w3.org/2000/09/xmldsig#sha1"
+	sha256Sig    = "http://www.w3.org/2001/04/xmlenc#sha256"
+)
+
+var (
+	// ErrUnableToSignEmptyEnvelope is returned if the envelope to be signed is empty. This is not valid.
+	ErrUnableToSignEmptyEnvelope = errors.New("unable to sign, envelope is empty")
 )
 
 // WSSEAuthInfo contains the information required to use WS-Security X.509 signing.
@@ -200,7 +205,8 @@ func (w *WSSEAuthInfo) addSignature(element any) error {
 		return err
 	}
 
-	bodyHasher := sha1.New()
+	//bodyHasher := sha1.New()
+	bodyHasher := sha256.New()
 	bodyHasher.Write(bodyEnc)
 	encodedBodyDigest := base64.StdEncoding.EncodeToString(bodyHasher.Sum(nil))
 	w.sigRef = append(w.sigRef, signatureReference{
@@ -211,7 +217,7 @@ func (w *WSSEAuthInfo) addSignature(element any) error {
 			},
 		},
 		DigestMethod: digestMethod{
-			Algorithm: sha1Sig,
+			Algorithm: sha256Sig, //sha1Sig,
 		},
 		DigestValue: digestValue{
 			Value: encodedBodyDigest,
@@ -219,8 +225,16 @@ func (w *WSSEAuthInfo) addSignature(element any) error {
 	})
 	return nil
 }
+func (w *WSSEAuthInfo) Header() HeaderBuilder {
+	return func(body any) (any, error) {
+		return w.securityHeader(body)
+	}
+}
 
 func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
+	if body == nil {
+		return security{}, ErrUnableToSignEmptyEnvelope
+	}
 
 	if err := w.addSignature(body); err != nil {
 		return security{}, err
@@ -240,7 +254,7 @@ func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
 			Algorithm: canonicalizationExclusiveC14N,
 		},
 		SignatureMethod: signatureMethod{
-			Algorithm: rsaSha1Sig,
+			Algorithm: rsaSha256Sig,
 		},
 		Reference: w.sigRef,
 	}
@@ -249,13 +263,13 @@ func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
 	if err != nil {
 		return security{}, err
 	}
-	signedInfoHasher := sha1.New()
+	signedInfoHasher := sha256.New()
 	signedInfoHasher.Write(signedInfoEnc)
 	signedInfoDigest := signedInfoHasher.Sum(nil)
 
 	privateKey := w.key.(*rsa.PrivateKey)
 
-	signatureValue, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA1, signedInfoDigest)
+	signatureValue, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, signedInfoDigest)
 	if err != nil {
 		return security{}, err
 	}
