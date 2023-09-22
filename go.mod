@@ -2,6 +2,8 @@ module github.com/m29h/gosoap
 
 go 1.21.1
 
+retract v1.0.0 // Published accidentally.
+
 require (
 	github.com/beevik/etree v1.2.0
 	github.com/google/uuid v1.3.1
