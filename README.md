@@ -9,6 +9,7 @@ The following sub-features are currently enabled by default when WS-Security is 
 - Sign Timestamp + Body elements of the SOAP message by default
 - Other elements can be signed (in theory) with the (currently unexported) addSignature() method
 - C14N canonicalization is ensured by marshaling the relevant to be signed sections with the [github.com/m29h/xml](https://github.com/m29h/xml) package
+- SHA256 is used as default HMAC for signing purposes. More fine grained configuration on different signing profiles is planned for future release
 
 Of course this library can also do basic SOAP (without WS-Security x.509)
 
@@ -30,41 +31,29 @@ main() {
 		return
 	}
 	
+	// setup Client and inject the HeaderBuilder for the wsse header which automatically
+	// signs each message body and adds a signed Timestamp to limit message validity
+	soapClient := soap.NewClient("https://soap.example.org/endpoint/service/", wsseInfo.Header())
+
 	// Setup your request structure
 	// ...
 	//
 
     // Create the SOAP request
     // call.action is the SOAP action (i.e. method name)
-    // service.url is the fully qualified path to the SOAP endpoint
     // call.requestData is the structure mapping to the SOAP request
-    // call.ResponseData is an output structure mapping to the SOAP response
-    // call.FaultData is an output structure mapping to the SOAP fault details
-    soapReq := soap.NewRequest(call.action, service.url, call.requestData, call.ResponseData, call.FaultData)
-    
-    // Potentially add custom headers
-    soapReq.AddHeader(...)
-    soapReq.AddHeader(...)
-    
-    // Sign the request with WS-Security x.509
-    soapReq.SignWith(wsseInfo)
-    
-    // Create the SOAP client
-    soapClient := soap.NewClient(&http.Client{})
-    
-    // Make the request
-    soapResp, err := soapClient.Do(context.Background(), soapReq)
-	if err != nil {
+    // call.responseData is an output structure mapping to the SOAP response
+
+    // Make the request by invoking the SOAPdoer interface of the client
+	// in a real-world example the SOAPdoer interface would get passed into a service type that would implement
+	// the SOAP service methods
+
+    err := soapClient.Do(context.Background(), call.action, call.requestData, call.responseData)
+
+    if err != nil {
 		fmt.Printf("Unable to validate: %s\n", err.Error())
 		return
-	} else if soapResp.StatusCode != http.StatusOK {
-		fmt.Printf("Unable to validate (status code invalid): %d\n", soapResp.StatusCode)
-		return
-	} else if soapResp.Fault() != nil {
-		fmt.Printf("SOAP fault experienced during call: %s\n", soapResp.Fault().Error())
-		// We can access the FaultData struct passed in for a type-safe way to get at the details.
-		return
-	}
+	} 
 	
 	// Now we can handle the response itself.
 	// Do our custom processing
