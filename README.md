@@ -22,22 +22,22 @@ include (
 )
 
 main() {
-	certFile := "cert.pem"
-	keyFile := "key.pem"
+    certFile := "cert.pem"
+    keyFile := "key.pem"
 
-	wsseInfo, authErr := soap.NewWSSEAuthInfo(certFile, keyFile)
-	if authErr != nil {
-		fmt.Printf("Auth error: %s\n", authErr.Error())
-		return
-	}
-	
-	// setup Client and inject the HeaderBuilder for the wsse header which automatically
-	// signs each message body and adds a signed Timestamp to limit message validity
-	soapClient := soap.NewClient("https://soap.example.org/endpoint/service/", wsseInfo.Header())
+    wsseInfo, authErr := soap.NewWSSEAuthInfo(certFile, keyFile)
+    if authErr != nil {
+        fmt.Printf("Auth error: %s\n", authErr.Error())
+        return
+    }
+    
+    // setup Client and inject the HeaderBuilder for the wsse header which automatically
+    // signs each message body and adds a signed Timestamp to limit message validity
+    soapClient := soap.NewClient("https://soap.example.org/endpoint/service/", wsseInfo.Header())
 
-	// Setup your request structure
-	// ...
-	//
+    // Setup your request structure
+    // ...
+    //
 
     // Create the SOAP request
     // call.action is the SOAP action (i.e. method name)
@@ -45,22 +45,22 @@ main() {
     // call.responseData is an output structure mapping to the SOAP response
 
     // Make the request by invoking the SOAPdoer interface of the client
-	// in a real-world example the SOAPdoer interface would get passed into a service type that would implement
-	// the SOAP service methods
+    // in a real-world example the SOAPdoer interface would get passed into a service type that would implement
+    // the SOAP service methods
 
     err := soapClient.Do(context.Background(), call.action, call.requestData, call.responseData)
 
     if err != nil {
-		fmt.Printf("Unable to validate: %s\n", err.Error())
-		return
-	} 
-	
-	// Now we can handle the response itself.
-	// Do our custom processing
-	// ...
-	//
-	
-	fmt.Printf("Done!\n")
+        fmt.Printf("Unable to validate: %s\n", err.Error())
+        return
+    } 
+    
+    // Now we can handle the response itself.
+    // Do our custom processing
+    // ...
+    //
+    
+    fmt.Printf("Done!\n")
 }
 ```
 
