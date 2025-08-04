@@ -25,7 +25,7 @@ type Envelope struct {
 	Body   *Body
 }
 
-// HeaderBuilder is a function that takes a interface to the body and
+// HeaderBuilder is a function that takes an interface to the body and
 // returns the finished header and an error
 type HeaderBuilder func(body any) (any, error)
 
@@ -41,7 +41,7 @@ func NewEnvelope(content interface{}) *Envelope {
 	case []any: // content array with multiple elements
 		return &Envelope{Body: &Body{Content: v}}
 	}
-	//single element body content
+	// single element body content
 	return &Envelope{Body: &Body{Content: []any{content}}}
 }
 
@@ -51,7 +51,7 @@ func (e *Envelope) AddHeaders(elems ...any) {
 		e.Header = &Header{}
 	}
 
-	e.Header.Headers = append(e.Header.Headers, elems)
+	e.Header.Headers = append(e.Header.Headers, elems...)
 }
 
 // Header is a SOAP envelope header.
@@ -87,7 +87,7 @@ func (b *Body) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			return ErrEnvelopeMisconfigured
 		}
 	}
-	b.Fault = NewFault()
+	b.Fault = &Fault{}
 
 	elementDone := make([]bool, len(b.Content))
 tokens:
@@ -107,10 +107,6 @@ tokens:
 				err = d.DecodeElement(b.Fault, &elem)
 				if err != nil {
 					return err
-				}
-				// Clear the content if we have a fault
-				if b.Fault.DetailInternal.Content == "" {
-					b.Fault.DetailInternal = nil
 				}
 				b.Content = nil
 			} else {

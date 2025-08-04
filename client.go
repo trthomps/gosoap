@@ -48,7 +48,7 @@ func (c *Client) SettHTTPClient(http *http.Client) {
 // If a SOAP fault is detected, then the 'details' property of the SOAP envelope will be appended into the faultDetailType argument.
 func (c *Client) Do(ctx context.Context, action string, request any, response any) error {
 
-	req := NewRequest(action, c.url, request, response, nil)
+	req := NewRequest(action, c.url, request, response)
 	req.AddHeader(c.headers...)
 	httpReq, err := req.httpRequest()
 	if err != nil {

@@ -1,20 +1,11 @@
-module github.com/m29h/gosoap
+module github.com/trthomps/gosoap
 
-go 1.21.1
+go 1.23.0
 
-retract (
-	v1.0.0 // Published accidentally.
-	v1.0.1 // Only contains retractions.
-)
+toolchain go1.24.3
 
 require (
-	github.com/beevik/etree v1.2.0
-	github.com/google/uuid v1.3.1
+	github.com/beevik/etree v1.5.1
+	github.com/google/uuid v1.6.0
 	github.com/m29h/xml v1.0.1
-	github.com/stretchr/testify v1.3.0
-)
-
-require (
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 )

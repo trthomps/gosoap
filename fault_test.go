@@ -1,212 +1,99 @@
 package soap
 
 import (
-	"bytes"
-	"reflect"
+	"errors"
 	"testing"
 
 	"github.com/m29h/xml"
 )
 
-var faultName = xml.Name{
-	Space: soapEnvNS,
-	Local: "Fault",
+func TestFaultError(t *testing.T) {
+	fault := &Fault{
+		Code:   "Server",
+		String: "Internal server error",
+		Actor:  "http://example.com/service",
+	}
+
+	expected := "soap fault: actor=http://example.com/service, code=Server, string=Internal server error"
+	if fault.Error() != expected {
+		t.Errorf("Expected error message %q, got %q", expected, fault.Error())
+	}
 }
 
-type faultDetailExampleField struct {
-	XMLName xml.Name `xml:"DetailField"`
-	Attr1   string   `xml:"attr1,attr"`
-	Attr2   int32    `xml:"attr2,attr"`
-	Value   string   `xml:",chardata"`
+func TestFaultUnwrap(t *testing.T) {
+	fault := &Fault{
+		Code:   "Server",
+		String: "Internal server error",
+	}
+
+	unwrapped := fault.Unwrap()
+	if !errors.Is(unwrapped, ErrSoapFault) {
+		t.Error("Fault.Unwrap() should return ErrSoapFault")
+	}
 }
 
-type faultDetailExample struct {
-	XMLName xml.Name                `xml:"DetailExample"`
-	Attr1   int32                   `xml:"attr1,attr"`
-	Field1  faultDetailExampleField `xml:"DetailField"`
+func TestFaultDecodeDetail(t *testing.T) {
+	type DetailStruct struct {
+		XMLName xml.Name `xml:"detail"`
+		Message string   `xml:"message"`
+		Code    int      `xml:"code"`
+	}
+
+	fault := &Fault{
+		Detail: details{
+			Content: []byte(`<detail><message>Custom error</message><code>1001</code></detail>`),
+		},
+	}
+
+	var detail DetailStruct
+	err := fault.DecodeDetail(&detail)
+	if err != nil {
+		t.Errorf("DecodeDetail failed: %v", err)
+	}
+
+	if detail.Message != "Custom error" {
+		t.Errorf("Expected message 'Custom error', got %q", detail.Message)
+	}
+
+	if detail.Code != 1001 {
+		t.Errorf("Expected code 1001, got %d", detail.Code)
+	}
 }
 
-type faultDecodeTest struct {
-	in          string
-	out         interface{}
-	faultErrStr string
-	err         error
+func TestFaultDecodeDetailEmpty(t *testing.T) {
+	fault := &Fault{
+		Detail: details{
+			Content: []byte{},
+		},
+	}
+
+	var detail struct{}
+	err := fault.DecodeDetail(&detail)
+	if err != nil {
+		t.Errorf("DecodeDetail with empty content should not fail: %v", err)
+	}
 }
 
-var faultDecodeTests = []faultDecodeTest{
-	{
-		in: `<?xml version="1.0" encoding="UTF-8"?>
-		<Fault xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-			<faultcode>FaultCodeValue</faultcode>
-			<faultstring>FaultStringValue</faultstring>
-			<faultactor>FaultActorValue</faultactor>
-		</Fault>`,
-		out: &Fault{
-			XMLName: faultName,
-			Code:    "FaultCodeValue",
-			String:  "FaultStringValue",
-			Actor:   "FaultActorValue",
-			DetailInternal: &faultDetail{
-				Content: "",
-			},
+func TestFaultDecodeDetailInvalidXML(t *testing.T) {
+	fault := &Fault{
+		Detail: details{
+			Content: []byte(`<invalid><unclosed>`),
 		},
-		faultErrStr: "soap fault: FaultCodeValue (FaultStringValue)",
-	},
-	{
-		in: `<?xml version="1.0" encoding="UTF-8"?>
-		<Fault xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-			<faultcode>FaultCodeValue</faultcode>
-			<faultstring>FaultStringValue</faultstring>
-			<faultactor>FaultActorValue</faultactor>
-			<detail>
-				<DetailExample attr1="10">
-					<DetailField attr1="test" attr2="11">This is a test string</DetailField>
-				</DetailExample>
-			</detail>
-		</Fault>`,
-		out: &Fault{
-			XMLName: faultName,
-			Code:    "FaultCodeValue",
-			String:  "FaultStringValue",
-			Actor:   "FaultActorValue",
-			DetailInternal: &faultDetail{
-				Content: `
-				<DetailExample attr1="10">
-					<DetailField attr1="test" attr2="11">This is a test string</DetailField>
-				</DetailExample>
-			`,
-			},
-		},
-		faultErrStr: "soap fault: FaultCodeValue (FaultStringValue)\n" + `<DetailExample attr1="10">
-					<DetailField attr1="test" attr2="11">This is a test string</DetailField>
-				</DetailExample>`,
-	},
-	{
-		in: `<?xml version="1.0" encoding="UTF-8"?>
-		<Fault xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-			<faultcode>FaultCodeValue</faultcode>
-			<faultstring>FaultStringValue</faultstring>
-			<faultactor>FaultActorValue</faultactor>
-			<detail>
-				<DetailExample attr1="10" />
-			</detail>
-		</Fault>`,
-		out: &Fault{
-			XMLName: faultName,
-			Code:    "FaultCodeValue",
-			String:  "FaultStringValue",
-			Actor:   "FaultActorValue",
-			DetailInternal: &faultDetail{
-				Content: `
-				<DetailExample attr1="10" />
-			`,
-			},
-		},
-		faultErrStr: "soap fault: FaultCodeValue (FaultStringValue)\n" + `<DetailExample attr1="10" />`,
-	},
-	{
-		in: `<?xml version="1.0" encoding="UTF-8"?>
-		<Fault xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-			<faultcode>FaultCodeValue</faultcode>
-			<faultstring>FaultStringValue</faultstring>
-			<faultactor>FaultActorValue</faultactor>
-			<detail>
-				<DetailExample attr1="10">
-					<DetailField attr1="test" attr2="11">This is a test string</DetailField>
-				</DetailExample>
-				<DetailExample attr1="11">
-					<DetailField attr1="test2" attr2="12">This is a second test string</DetailField>
-				</DetailExample>
-			</detail>
-		</Fault>`,
-		out: &Fault{
-			XMLName: faultName,
-			Code:    "FaultCodeValue",
-			String:  "FaultStringValue",
-			Actor:   "FaultActorValue",
-			DetailInternal: &faultDetail{
-				Content: `
-				<DetailExample attr1="10">
-					<DetailField attr1="test" attr2="11">This is a test string</DetailField>
-				</DetailExample>
-				<DetailExample attr1="11">
-					<DetailField attr1="test2" attr2="12">This is a second test string</DetailField>
-				</DetailExample>
-			`,
-			},
-		},
-		faultErrStr: "soap fault: FaultCodeValue (FaultStringValue)\n" + `<DetailExample attr1="10">
-					<DetailField attr1="test" attr2="11">This is a test string</DetailField>
-				</DetailExample>
-				<DetailExample attr1="11">
-					<DetailField attr1="test2" attr2="12">This is a second test string</DetailField>
-				</DetailExample>`,
-	},
-	{
-		in: `<?xml version="1.0" encoding="UTF-8"?>
-		<Fault xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-			<faultcode>FaultCodeValue</faultcode>
-			<faultstring>FaultStringValue</faultstring>
-			<faultactor>FaultActorValue</faultactor>
-			<detail>
-			</detail>
-		</Fault>`,
-		out: &Fault{
-			XMLName: faultName,
-			Code:    "FaultCodeValue",
-			String:  "FaultStringValue",
-			Actor:   "FaultActorValue",
-			DetailInternal: &faultDetail{
-				Content: `
-			`,
-			},
-		},
-		faultErrStr: "soap fault: FaultCodeValue (FaultStringValue)\n",
-	},
-	{
-		in: `<?xml version="1.0" encoding="UTF-8"?>
-		<Fault xmlns="http://schemas.xmlsoap.org/soap/envelope/">
-			<faultcode>FaultCodeValue</faultcode>
-			<faultstring>FaultStringValue</faultstring>
-			<faultactor>FaultActorValue</faultactor>
-			<detail>
-				<DetailExample attr1="10
-					<DetailField attr1="test" attr2="11">This is a test string</DetailField>
-				</DetailExample>
-			</detail>
-		</Fault>`,
-		out: &Fault{
-			XMLName: faultName,
-			Code:    "FaultCodeValue",
-			String:  "FaultStringValue",
-			Actor:   "FaultActorValue",
-		},
-		err: &xml.SyntaxError{Msg: "unescaped < inside quoted string", Line: 8},
-	},
+	}
+
+	var detail struct{}
+	err := fault.DecodeDetail(&detail)
+	if err == nil {
+		t.Error("DecodeDetail with invalid XML should fail")
+	}
 }
 
-func TestFaultDecode(t *testing.T) {
-	for i, tt := range faultDecodeTests {
-		var val *Fault
-		val = NewFault()
+func TestErrSoapFault(t *testing.T) {
+	if ErrSoapFault == nil {
+		t.Error("ErrSoapFault should not be nil")
+	}
 
-		dec := xml.NewDecoder(bytes.NewReader([]byte(tt.in)))
-
-		if err := dec.Decode(val); !reflect.DeepEqual(err, tt.err) {
-			t.Errorf("#%d: %v, want %v", i, err, tt.err)
-			continue
-		} else if err != nil {
-			continue
-		}
-		valStr, _ := xml.Marshal(val)
-		outStr, _ := xml.Marshal(tt.out)
-		if string(valStr) != string(outStr) {
-			//fmt.Printf("%#v\n%#v\n", val, tt.out)
-			t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, string(valStr), string(outStr))
-			continue
-		}
-		if tt.faultErrStr != val.Error() {
-			t.Errorf("#%d: mismatch\nhave %#+v\n want: %#+v", i, val.Error(), tt.faultErrStr)
-		}
+	if ErrSoapFault.Error() != "soap fault" {
+		t.Errorf("Expected ErrSoapFault message 'soap fault', got %q", ErrSoapFault.Error())
 	}
 }

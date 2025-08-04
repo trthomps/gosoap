@@ -17,9 +17,8 @@ type Request struct {
 	url     string
 	action  string
 
-	body  interface{}
-	resp  interface{}
-	fault interface{}
+	body interface{}
+	resp interface{}
 }
 
 // NewRequest creates a SOAP request. This differs from a standard HTTP request in several ways.
@@ -29,13 +28,12 @@ type Request struct {
 // instead the body is supplied here.
 // If signing is desired, set the WSSE credentials on the request before passing it to the Client.
 // NOTE: if custom SOAP headers are going to be supplied, they must be added before signing.
-func NewRequest(action string, url string, body interface{}, respType interface{}, faultType interface{}) *Request {
+func NewRequest(action string, url string, body interface{}, respType interface{}) *Request {
 	req := &Request{
 		action: action,
 		url:    url,
 		body:   body,
 		resp:   respType,
-		fault:  faultType,
 	}
 
 	return req
