@@ -3,9 +3,7 @@ package soap
 import (
 	"bytes"
 	"io"
-	"log"
 	"net/http"
-	"os"
 
 	"github.com/m29h/xml"
 )
@@ -60,10 +58,6 @@ func (r *Request) serialize() (io.Reader, error) {
 	envelopeEnc, err := xml.Marshal(envelope)
 	if err != nil {
 		return nil, err
-	}
-
-	if err := os.WriteFile("request.xml", envelopeEnc, 0666); err != nil {
-		log.Fatal(err)
 	}
 
 	return bytes.NewBuffer(envelopeEnc), nil
