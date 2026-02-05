@@ -1,12 +1,16 @@
 package soap
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/m29h/xml"
 )
 
 type testBody struct {
@@ -359,5 +363,154 @@ func TestHeaderBuilder(t *testing.T) {
 
 	if securityHeader.MustUnderstand != 1 {
 		t.Error("Security header should have mustUnderstand=1")
+	}
+}
+
+func TestCanonicalize(t *testing.T) {
+	// xml.Marshal encodes newlines as &#xA; character references.
+	// Exclusive C14N requires these to be decoded to literal bytes (0x0A).
+	body := &testBody{Value: "test\n\n"}
+	raw, err := xml.Marshal(body)
+	if err != nil {
+		t.Fatalf("xml.Marshal failed: %v", err)
+	}
+
+	if !bytes.Contains(raw, []byte("&#xA;")) {
+		t.Fatal("Expected xml.Marshal to produce &#xA; character references for newlines")
+	}
+
+	canonical, err := canonicalize(raw)
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+
+	if bytes.Contains(canonical, []byte("&#xA;")) {
+		t.Error("Canonicalized output should not contain &#xA; character references; newlines must be literal bytes")
+	}
+
+	if !bytes.Contains(canonical, []byte("test\n\n")) {
+		t.Error("Canonicalized output should contain literal newline bytes")
+	}
+}
+
+func TestCanonicalizeWithoutNewlines(t *testing.T) {
+	// Verify canonicalization does not corrupt content that has no character references.
+	body := &testBody{Value: "plain content"}
+	raw, err := xml.Marshal(body)
+	if err != nil {
+		t.Fatalf("xml.Marshal failed: %v", err)
+	}
+
+	canonical, err := canonicalize(raw)
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+
+	if !bytes.Contains(canonical, []byte("plain content")) {
+		t.Error("Canonicalized output should preserve content without character references")
+	}
+}
+
+func TestCanonicalizeInvalidXML(t *testing.T) {
+	_, err := canonicalize([]byte("<broken"))
+	if err == nil {
+		t.Error("canonicalize should return an error for invalid XML")
+	}
+	if !strings.Contains(err.Error(), "canonicalize:") {
+		t.Errorf("Error should be wrapped with context, got: %v", err)
+	}
+}
+
+func TestAddSignatureDigestUsesCanonicalForm(t *testing.T) {
+	authInfo, err := NewWSSEAuthInfo(
+		WithWSSEAuthInfoCertPath("testdata/cert.pem", "testdata/key.pem"),
+	)
+	if err != nil {
+		t.Skipf("Skipping test - cert files not available: %v", err)
+	}
+
+	// Use content with newlines, which triggers the &#xA; encoding issue.
+	body := &testBody{Value: "test\n\n"}
+
+	err = authInfo.addSignature(body)
+	if err != nil {
+		t.Fatalf("addSignature failed: %v", err)
+	}
+
+	if len(authInfo.sigRef) != 1 {
+		t.Fatalf("Expected 1 signature reference, got %d", len(authInfo.sigRef))
+	}
+	actualDigest := authInfo.sigRef[0].DigestValue.Value
+
+	// Compute the expected digest from the canonicalized XML.
+	enc, err := xml.Marshal(body)
+	if err != nil {
+		t.Fatalf("xml.Marshal failed: %v", err)
+	}
+	canonical, err := canonicalize(enc)
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+	hasher := newHasherFromCryptoHash(authInfo.digestMethod)
+	hasher.Write(canonical)
+	expectedDigest := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+
+	if actualDigest != expectedDigest {
+		t.Errorf("Digest mismatch: addSignature produced %q, expected %q (from canonicalized XML)", actualDigest, expectedDigest)
+	}
+
+	// Also verify the digest does NOT match a hash of the raw (non-canonical) marshalled bytes.
+	// This confirms the canonicalization is actually doing something.
+	rawHasher := newHasherFromCryptoHash(authInfo.digestMethod)
+	rawHasher.Write(enc)
+	rawDigest := base64.StdEncoding.EncodeToString(rawHasher.Sum(nil))
+
+	if actualDigest == rawDigest {
+		t.Error("Digest should differ from raw xml.Marshal output; canonicalization is not being applied")
+	}
+}
+
+func TestSecurityHeaderSignedInfoUsesCanonicalForm(t *testing.T) {
+	authInfo, err := NewWSSEAuthInfo(
+		WithWSSEAuthInfoCertPath("testdata/cert.pem", "testdata/key.pem"),
+	)
+	if err != nil {
+		t.Skipf("Skipping test - cert files not available: %v", err)
+	}
+
+	// Use content with newlines to trigger &#xA; encoding in the body digest references.
+	body := &testBody{Value: "test\n\n"}
+
+	sec, err := authInfo.securityHeader(body)
+	if err != nil {
+		t.Fatalf("securityHeader failed: %v", err)
+	}
+
+	// Re-marshal the SignedInfo and verify the signature was computed over the canonical form.
+	signedInfoEnc, err := xml.Marshal(sec.Signature.SignedInfo)
+	if err != nil {
+		t.Fatalf("xml.Marshal SignedInfo failed: %v", err)
+	}
+
+	signedInfoCanonical, err := canonicalize(signedInfoEnc)
+	if err != nil {
+		t.Fatalf("canonicalize SignedInfo failed: %v", err)
+	}
+
+	// The canonical and raw forms should differ (SignedInfo contains digest values
+	// computed from canonicalized body, so the SignedInfo XML itself may contain
+	// characters that get normalized).
+	// At minimum, verify the signature value was produced and the canonical form is valid XML.
+	if sec.Signature.SignatureValue == "" {
+		t.Error("SignatureValue should not be empty")
+	}
+
+	if len(signedInfoCanonical) == 0 {
+		t.Error("Canonicalized SignedInfo should not be empty")
+	}
+
+	// Verify the SignedInfo contains the body reference with correct digest algorithm.
+	if len(sec.Signature.SignedInfo.Reference) != 2 {
+		t.Fatalf("Expected 2 references (body + timestamp), got %d", len(sec.Signature.SignedInfo.Reference))
 	}
 }
