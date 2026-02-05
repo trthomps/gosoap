@@ -1,6 +1,7 @@
 package soap
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -18,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/m29h/xml"
-
+	"github.com/beevik/etree"
 	"github.com/google/uuid"
+	"github.com/m29h/xml"
 )
 
 // Implements the WS-Security standard using X.509 certificate signatures.
@@ -401,6 +402,26 @@ type security struct {
 func getWsuID() string {
 	return "WSSE" + uuid.New().String()
 }
+// canonicalize applies Exclusive C14N canonicalization to XML bytes.
+// This parses the XML and re-serializes it with canonical settings,
+// which properly handles character reference decoding (e.g., &#xA; -> 0x0A).
+func canonicalize(xmlBytes []byte) ([]byte, error) {
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(xmlBytes); err != nil {
+		return nil, err
+	}
+	doc.WriteSettings = etree.WriteSettings{
+		CanonicalEndTags: true,
+		CanonicalText:    true,
+		CanonicalAttrVal: true,
+	}
+	var buf bytes.Buffer
+	if _, err := doc.WriteTo(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func (w *WSSEAuthInfo) addSignature(element any) error {
 	// 0. We create the id value and assign it to the incoming body.WsuID via reflect
 	id := getWsuID()
@@ -425,17 +446,19 @@ func (w *WSSEAuthInfo) addSignature(element any) error {
 		return errors.New("addSignature: body did not contain a WsuID struct field")
 	}
 
-	// 1. We create the DigestValue of the body.
-
-	// We make some changes to canonicalize things.
-	// Since we have a copy, this is ok
+	// 1. We create the DigestValue of the body using Exclusive C14N canonicalization.
 	bodyEnc, err := xml.Marshal(element)
 	if err != nil {
 		return err
 	}
 
+	bodyCanonical, err := canonicalize(bodyEnc)
+	if err != nil {
+		return err
+	}
+
 	bodyHasher := newHasherFromCryptoHash(w.digestMethod)
-	bodyHasher.Write(bodyEnc)
+	bodyHasher.Write(bodyCanonical)
 	w.sigRef = append(w.sigRef, signatureReference{
 		URI: "#" + id,
 		Transforms: transforms{
@@ -492,8 +515,13 @@ func (w *WSSEAuthInfo) securityHeader(body any) (security, error) {
 		return security{}, err
 	}
 
+	signedInfoCanonical, err := canonicalize(signedInfoEnc)
+	if err != nil {
+		return security{}, err
+	}
+
 	signedInfoHasher := newHasherFromCryptoHash(w.signatureMethod)
-	signedInfoHasher.Write(signedInfoEnc)
+	signedInfoHasher.Write(signedInfoCanonical)
 	signedInfoDigest := signedInfoHasher.Sum(nil)
 
 	var signatureValue []byte
