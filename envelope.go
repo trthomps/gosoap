@@ -7,8 +7,6 @@ import (
 	"github.com/m29h/xml"
 )
 
-const xsdNS = "http://www.w3.org/2001/XMLSchema"
-const xsiNS = "http://www.w3.org/2001/XMLSchema-instance"
 const soapEnvNS = "http://schemas.xmlsoap.org/soap/envelope/"
 
 var (

@@ -59,7 +59,7 @@ func (c *Client) Do(ctx context.Context, action string, request any, response an
 	if err != nil {
 		return err
 	}
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	resp := newResponse(httpResp, req)
 	err = resp.deserialize()

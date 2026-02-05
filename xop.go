@@ -3,7 +3,6 @@ package soap
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"reflect"
 	"strings"
@@ -58,9 +57,10 @@ func (d *xopDecoder) getXopContentIDIncludePath(element *etree.Element, path []s
 			href := ""
 
 			for _, attr := range token.Attr {
-				if attr.Key == "xmlns" {
+				switch attr.Key {
+				case "xmlns":
 					ns = attr.Value
-				} else if attr.Key == "href" {
+				case "href":
 					href = attr.Value
 				}
 			}
@@ -271,8 +271,8 @@ func (d *xopDecoder) decode(respEnvelope *Envelope) error {
 
 			go func() {
 				// Here we re-serialize the object to a pipe for easy deserialization by the standard XML library
-				doc.WriteTo(pipeWriter)
-				defer pipeWriter.Close()
+				_, err := doc.WriteTo(pipeWriter)
+				_ = pipeWriter.CloseWithError(err)
 			}()
 
 			err = xml.NewDecoder(pipeReader).Decode(&respEnvelope)
@@ -308,7 +308,7 @@ func (d *xopDecoder) decode(respEnvelope *Envelope) error {
 			}
 
 			// We don't read the content until we know we're able to save it (no point reading something we'll never store).
-			partBytes, err := ioutil.ReadAll(part)
+			partBytes, err := io.ReadAll(part)
 			if err != nil {
 				return err
 			}
