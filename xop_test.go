@@ -11,8 +11,6 @@ func TestXOPPlaceholder(t *testing.T) {
 	// XOP (XML-binary Optimized Packaging) tests can be added here
 	// when the implementation is complete
 
-	// Test that XOP constants are defined
-	const expectedXOPNS = "http://www.w3.org/2004/08/xop/include"
 	// This test ensures the package compiles correctly
 	t.Log("XOP test placeholder - ready for implementation")
 }

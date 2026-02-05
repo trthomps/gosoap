@@ -11,7 +11,6 @@ import (
 // Request represents a single request to a SOAP service.
 type Request struct {
 	headers []HeaderBuilder
-	method  string
 	url     string
 	action  string
 

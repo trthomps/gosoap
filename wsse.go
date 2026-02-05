@@ -234,7 +234,7 @@ func NewWSSEAuthInfo(options ...WSSEAuthInfoOption) (*WSSEAuthInfo, error) {
 	if authInfo.certDER.PrivateKey == nil {
 		return nil, errors.New("WSSEAuthInfo: private key is nil, ensure you have set the certificate and key")
 	}
-	if authInfo.certDER.Certificate == nil || len(authInfo.certDER.Certificate) == 0 {
+	if len(authInfo.certDER.Certificate) == 0 {
 		return nil, errors.New("WSSEAuthInfo: certificate is nil or empty, ensure you have set the certificate and key")
 	}
 	if _, ok := authInfo.key.(*rsa.PrivateKey); !ok {
