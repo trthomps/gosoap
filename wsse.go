@@ -402,13 +402,19 @@ type security struct {
 func getWsuID() string {
 	return "WSSE" + uuid.New().String()
 }
-// canonicalize applies Exclusive C14N canonicalization to XML bytes.
-// This parses the XML and re-serializes it with canonical settings,
-// which properly handles character reference decoding (e.g., &#xA; -> 0x0A).
+
+// canonicalize normalizes XML serialization for C14N-compatible digest computation.
+// It parses the XML through etree and re-serializes with canonical text and attribute
+// settings, which decodes character references (e.g., &#xA; -> 0x0A), uses canonical
+// end tags, and normalizes attribute values.
+//
+// Note: this does not implement full Exclusive C14N (namespace axis sorting, superfluous
+// namespace exclusion). It is sufficient for canonicalizing xml.Marshal output where
+// namespace declarations are already minimal and consistently ordered.
 func canonicalize(xmlBytes []byte) ([]byte, error) {
 	doc := etree.NewDocument()
 	if err := doc.ReadFromBytes(xmlBytes); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("canonicalize: failed to parse XML: %w", err)
 	}
 	doc.WriteSettings = etree.WriteSettings{
 		CanonicalEndTags: true,
@@ -417,7 +423,7 @@ func canonicalize(xmlBytes []byte) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 	if _, err := doc.WriteTo(&buf); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("canonicalize: failed to write XML: %w", err)
 	}
 	return buf.Bytes(), nil
 }

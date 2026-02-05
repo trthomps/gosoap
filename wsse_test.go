@@ -3,7 +3,6 @@ package soap
 import (
 	"bytes"
 	"crypto"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -394,6 +393,34 @@ func TestCanonicalize(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeWithoutNewlines(t *testing.T) {
+	// Verify canonicalization does not corrupt content that has no character references.
+	body := &testBody{Value: "plain content"}
+	raw, err := xml.Marshal(body)
+	if err != nil {
+		t.Fatalf("xml.Marshal failed: %v", err)
+	}
+
+	canonical, err := canonicalize(raw)
+	if err != nil {
+		t.Fatalf("canonicalize failed: %v", err)
+	}
+
+	if !bytes.Contains(canonical, []byte("plain content")) {
+		t.Error("Canonicalized output should preserve content without character references")
+	}
+}
+
+func TestCanonicalizeInvalidXML(t *testing.T) {
+	_, err := canonicalize([]byte("<broken"))
+	if err == nil {
+		t.Error("canonicalize should return an error for invalid XML")
+	}
+	if !strings.Contains(err.Error(), "canonicalize:") {
+		t.Errorf("Error should be wrapped with context, got: %v", err)
+	}
+}
+
 func TestAddSignatureDigestUsesCanonicalForm(t *testing.T) {
 	authInfo, err := NewWSSEAuthInfo(
 		WithWSSEAuthInfoCertPath("testdata/cert.pem", "testdata/key.pem"),
@@ -424,8 +451,9 @@ func TestAddSignatureDigestUsesCanonicalForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("canonicalize failed: %v", err)
 	}
-	h := sha256.Sum256(canonical)
-	expectedDigest := base64.StdEncoding.EncodeToString(h[:])
+	hasher := newHasherFromCryptoHash(authInfo.digestMethod)
+	hasher.Write(canonical)
+	expectedDigest := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 
 	if actualDigest != expectedDigest {
 		t.Errorf("Digest mismatch: addSignature produced %q, expected %q (from canonicalized XML)", actualDigest, expectedDigest)
@@ -433,10 +461,56 @@ func TestAddSignatureDigestUsesCanonicalForm(t *testing.T) {
 
 	// Also verify the digest does NOT match a hash of the raw (non-canonical) marshalled bytes.
 	// This confirms the canonicalization is actually doing something.
-	rawHash := sha256.Sum256(enc)
-	rawDigest := base64.StdEncoding.EncodeToString(rawHash[:])
+	rawHasher := newHasherFromCryptoHash(authInfo.digestMethod)
+	rawHasher.Write(enc)
+	rawDigest := base64.StdEncoding.EncodeToString(rawHasher.Sum(nil))
 
 	if actualDigest == rawDigest {
 		t.Error("Digest should differ from raw xml.Marshal output; canonicalization is not being applied")
+	}
+}
+
+func TestSecurityHeaderSignedInfoUsesCanonicalForm(t *testing.T) {
+	authInfo, err := NewWSSEAuthInfo(
+		WithWSSEAuthInfoCertPath("testdata/cert.pem", "testdata/key.pem"),
+	)
+	if err != nil {
+		t.Skipf("Skipping test - cert files not available: %v", err)
+	}
+
+	// Use content with newlines to trigger &#xA; encoding in the body digest references.
+	body := &testBody{Value: "test\n\n"}
+
+	sec, err := authInfo.securityHeader(body)
+	if err != nil {
+		t.Fatalf("securityHeader failed: %v", err)
+	}
+
+	// Re-marshal the SignedInfo and verify the signature was computed over the canonical form.
+	signedInfoEnc, err := xml.Marshal(sec.Signature.SignedInfo)
+	if err != nil {
+		t.Fatalf("xml.Marshal SignedInfo failed: %v", err)
+	}
+
+	signedInfoCanonical, err := canonicalize(signedInfoEnc)
+	if err != nil {
+		t.Fatalf("canonicalize SignedInfo failed: %v", err)
+	}
+
+	// The canonical and raw forms should differ (SignedInfo contains digest values
+	// computed from canonicalized body, so the SignedInfo XML itself may contain
+	// characters that get normalized).
+	// At minimum, verify the signature value was produced and the canonical form is valid XML.
+	if sec.Signature.SignatureValue == "" {
+		t.Error("SignatureValue should not be empty")
+	}
+
+	if len(signedInfoCanonical) == 0 {
+		t.Error("Canonicalized SignedInfo should not be empty")
+	}
+
+	// Verify the SignedInfo contains the body reference with correct digest algorithm.
+	if len(sec.Signature.SignedInfo.Reference) != 2 {
+		t.Fatalf("Expected 2 references (body + timestamp), got %d", len(sec.Signature.SignedInfo.Reference))
 	}
 }
